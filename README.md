@@ -1,80 +1,60 @@
 # Práctica de Laboratorio: Optimización de Modelos de Datos con GraphQL y DataLoader
 
-Proyecto desarrollado para la materia **Patrones de Diseño de APIs / Software** en el programa de **Maestría en Ingeniería de Software**.
+* **Materia:** Patrones de Diseño de APIs (Maestría en Software)
+* **Tema:** GraphQL y Patrón DataLoader
+* **Repositorio:** https://github.com/jorgeGAG/practica-GraphQL.git
 
 ---
 
-## 🎯 Objetivo de la Práctica
-Identificar y resolver de manera práctica el **Problema de Consulta N+1** en arquitecturas GraphQL mediante la implementación del patrón **DataLoader** (agrupamiento por lotes y almacenamiento en caché por petición).
+## 1. Contexto y Objetivo de la Práctica
+Para la empresa ficticia **LogiTech SaaS**, el equipo de Frontend requiere un tablero unificado de clientes con sus facturas. 
+
+El objetivo de este laboratorio es:
+1. Diseñar e implementar un esquema GraphQL (*Schema-First*).
+2. Identificar el problema de rendimiento **Consulta N+1** mediante los logs de la base de datos simulada.
+3. Mitigar el problema utilizando el patrón **DataLoader** (agrupamiento por lotes y caché por petición).
 
 ---
 
-## 📌 ¿Qué es el Problema N+1?
-Al realizar una consulta anidada en GraphQL (por ejemplo, obtener una lista de clientes y para cada uno sus facturas históricas):
-* **1 consulta** inicial para traer la lista de los $N$ clientes:
-  `SELECT * FROM clientes;`
-* **N consultas individuales**, una por cada cliente, para consultar sus facturas:
-  `SELECT * FROM facturas WHERE cliente_id = '...';`
+## 2. Entregables Técnicos
+El proyecto contiene los archivos solicitados en la guía de práctica:
 
-Si se tienen 100 clientes, se disparan **101 consultas** a la base de datos, lo que provoca alta latencia, saturación del pool de conexiones y lentitud general.
-
----
-
-## 💡 Solución Implementada: DataLoader
-Para resolverlo, se aplicó la librería **DataLoader** con las siguientes directrices arquitectónicas:
-1. **Método por Lotes (`Batch`)**: Se creó una función en la base de datos que recibe un arreglo de IDs y realiza una única consulta SQL con la cláusula `IN`:
-   `SELECT * FROM facturas WHERE cliente_id IN ('c-1', 'c-2', 'c-3');`
-2. **Ciclo de vida por petición (`Per-Request Context`)**: El DataLoader se instancia dinámicamente dentro de la función `context` de Apollo Server, evitando fugas de memoria o que diferentes usuarios compartan datos en caché.
-3. **Resolutores optimizados**: El resolver de `Cliente.facturas` invoca `context.loaders.facturasLoader.load(parent.id)`.
+* **`schema.graphql`**: Definición del sistema de tipos (SDL) con `Cliente`, `Factura` y `Query`.
+* **`resolvers.naive.js`**: Implementación de la solución ingenua (que provoca el problema N+1).
+* **`resolvers.js`**: Implementación de la solución optimizada con DataLoader.
+* **`dataloaders.js`**: Función de carga por lotes (*Batch Function*) para resolver facturas en un solo viaje.
+* **`database.js`**: Base de datos simulada con latencia y soporte de consultas individuales y por lote (*Batch*).
+* **`server.js`**: Servidor GraphQL listo y optimizado.
+* **`server-naive.js`**: Servidor en el puerto 4000 (Solución sin optimizar).
+* **`server-optimized.js`**: Servidor en el puerto 4001 (Solución optimizada con DataLoader).
+* **`reporte.txt`**: Reporte técnico de consultas y métricas de rendimiento.
 
 ---
 
-## 📊 Comparativa de Resultados
+## 3. Demostración y Pruebas en Ambos Puertos
 
-| Métrica | Solución Naive (Sin Optimizar) | Solución Optimizada (DataLoader) | Mejora |
-| :--- | :---: | :---: | :---: |
-| **Consultas a BD** | **4 consultas** ($1 + 3$) | **2 consultas** ($1 + 1$) | **-50%** de consultas |
-| **Tiempo de respuesta** | ~800 ms | ~400 ms | **2x más rápido** |
-| **Complejidad de consultas** | $O(N)$ consultas | $O(1)$ constante | Escalabilidad garantizada |
+Se prepararon dos servidores para comparar la ejecución en vivo:
 
----
-
-## 📂 Estructura del Proyecto
-
-```text
-graphql-main/
-├── schema.graphql        # Definición del esquema SDL (Schema-First)
-├── dataloaders.js        # Fábrica e implementación de DataLoader
-├── resolvers.js          # Resolutores optimizados con DataLoader
-├── resolvers.naive.js    # Resolutores con la solución ingenua (N+1)
-├── database.js           # Capa de datos simulada con soporte individual y batch
-├── server.js             # Servidor principal optimizado (Puerto 4000)
-├── server-naive.js       # Servidor sin optimizar para pruebas comparativas (Puerto 4000)
-├── server-optimized.js   # Servidor optimizado en puerto independiente (Puerto 4001)
-├── reporte.txt           # Reporte técnico con métricas de consola
-├── package.json          # Dependencias y scripts
-└── README.md             # Documentación del proyecto
-```
-
----
-
-## 🚀 Instrucciones de Ejecución
-
-### 1. Clonar el repositorio e instalar dependencias
+### Escenario 1: Solución Ingenua (Puerto 4000)
+Ejecutar en la terminal:
 ```bash
-git clone <URL_DE_TU_REPOSITORIO>
-cd graphql-main
-npm install
+node server-naive.js
 ```
+* **Apollo Sandbox:** http://localhost:4000/
+* **Resultado en consola:** Ejecuta **4 consultas** (1 para clientes y 3 individuales en rojo para las facturas de cada cliente).
 
-### 2. Ejecutar el Servidor Principal (Optimizado)
+### Escenario 2: Solución Optimizada con DataLoader (Puerto 4001)
+Ejecutar en otra terminal:
 ```bash
-node server.js
+node server-optimized.js
 ```
-Abre en tu navegador: [http://localhost:4000/](http://localhost:4000/)
+* **Apollo Sandbox:** http://localhost:4001/
+* **Resultado en consola:** Ejecuta únicamente **2 consultas** (1 para clientes y 1 por lote en verde con `WHERE cliente_id IN (...)`).
 
-### 3. Ejecutar la Consulta de Prueba
-En el sandbox de Apollo ejecuta la siguiente consulta:
+---
+
+## 4. Consulta GraphQL de Prueba
+En ambos puertos se ejecuta la misma consulta en Apollo Sandbox:
 
 ```graphql
 query GetDashboardData {
@@ -88,24 +68,9 @@ query GetDashboardData {
 }
 ```
 
-### 4. Pruebas Comparativas de Escenarios
-Si deseas reproducir ambos escenarios por separado:
-* **Escenario Naive (Puerto 4000):**
-  ```bash
-  node server-naive.js
-  ```
-  *(Observa en consola las 4 consultas individuales en rojo)*
-
-* **Escenario Optimizado (Puerto 4001):**
-  ```bash
-  node server-optimized.js
-  ```
-  *(Observa en consola únicamente 2 consultas, una de ellas en verde con BATCH)*
-
 ---
 
-## 🛠️ Tecnologías Utilizadas
-* **Node.js** (v18+)
-* **Apollo Server** (@apollo/server)
-* **GraphQL**
-* **DataLoader**
+## 5. Resultados
+* **Sin optimizar (Puerto 4000):** 4 consultas a la base de datos ($1 + 3$) $\rightarrow$ $800\text{ ms}$ de latencia.
+* **Con DataLoader (Puerto 4001):** 2 consultas a la base de datos ($1 + 1$) $\rightarrow$ $400\text{ ms}$ de latencia.
+* **Conclusión:** Se reducen las consultas a la mitad y se pasa de complejidad $O(N)$ a complejidad constante $O(1)$.
