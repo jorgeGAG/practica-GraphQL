@@ -1,0 +1,88 @@
+================================================================================
+REPORTE TÉCNICO DE LABORATORIO: OPTIMIZACIÓN GRAPHQL CON DATALOADER
+Materia: Patrones de Diseño de Software / Patrones de Diseño de APIs
+Maestría en Ingeniería de Software
+================================================================================
+
+1. DIAGNÓSTICO DEL PROBLEMA: CONSULTA N+1 (ESTADO INGENUO)
+--------------------------------------------------------------------------------
+Al ejecutar la consulta jerárquica de Dashboard:
+
+  query GetDashboardData {
+    clientes {
+      nombre
+      sector
+      facturas {
+        monto
+      }
+    }
+  }
+
+En la solución ingenua, la consola registró un total de 4 CONSULTAS a la base de datos:
+  [DB READ] SELECT * FROM clientes;
+  [DB READ] SELECT * FROM facturas WHERE cliente_id = 'c-1';
+  [DB READ] SELECT * FROM facturas WHERE cliente_id = 'c-2';
+  [DB READ] SELECT * FROM facturas WHERE cliente_id = 'c-3';
+
+- Análisis del Problema N+1:
+  Se realiza 1 consulta inicial para obtener la lista de N clientes (N = 3).
+  Luego, por cada cliente individual retornado, el resolver 'Cliente.facturas' se 
+  invoca de manera aislada, disparando N consultas adicionales para sus facturas.
+  Total de consultas: 1 + N = 4 consultas.
+  En términos de latencia: (1 + 3) * 200ms = 800ms de latencia acumulada.
+  Si la base de datos contara con 100 clientes, se dispararían 101 consultas (20.2 segundos).
+
+
+2. SOLUCIÓN APLICADA: PATRÓN DATALOADER
+--------------------------------------------------------------------------------
+Se aplicaron las directrices arquitectónicas solicitadas:
+
+a) Método por Lotes (Batch Function):
+   Se implementó la función 'fetchFacturasByClienteIdsBatch(clienteIds)' en la capa de datos.
+   Esta función recibe un arreglo con todos los IDs requeridos y ejecuta una sola consulta
+   SQL simulada con operador IN:
+   SELECT * FROM facturas WHERE cliente_id IN ('c-1', 'c-2', 'c-3');
+   Garantizando que la respuesta sea un arreglo con el mismo orden y longitud de 'clienteIds'.
+
+b) Instanciación por Petición (Per-Request Scoping):
+   El DataLoader se instancia de forma dinámica dentro de la función 'context' de Apollo Server:
+   
+     const { url } = await startStandaloneServer(server, {
+       listen: { port: 4000 },
+       context: async () => ({
+         loaders: {
+           facturasLoader: createFacturasLoader()
+         }
+       })
+     });
+
+   * Justificación Arquitectónica:
+     Instanciar el DataLoader por petición garantiza que el caché interno del loader no persista
+     entre diferentes usuarios ni entre distintas solicitudes HTTP. Esto previene fugas de
+     información (data leaks) y accesos no autorizados a datos cacheados de otros clientes.
+
+c) Resolver Optimizado:
+   El resolver 'Cliente.facturas' ahora delega la carga al loader inyectado en el contexto:
+   
+     facturas: async (parent, _args, context) => {
+       return await context.loaders.facturasLoader.load(parent.id);
+     }
+
+
+3. RESULTADOS POSTERIORES A LA OPTIMIZACIÓN
+--------------------------------------------------------------------------------
+Número exacto de consultas impresas en consola tras aplicar DataLoader:
+
+  TOTAL: 2 CONSULTAS
+
+Salida exacta registrada en la terminal:
+  [DB READ] SELECT * FROM clientes;
+  [DB BATCH READ] SELECT * FROM facturas WHERE cliente_id IN ('c-1', 'c-2', 'c-3');
+
+4. CONCLUSIÓN Y BENEFICIOS DE RENDIMIENTO
+--------------------------------------------------------------------------------
+- Reducción del número de consultas de 4 a 2 (reducción del 50% en este escenario).
+- El número de consultas para recuperar las facturas se vuelve O(1) independiente
+  del número N de clientes (Complejidad constante en viajes a la base de datos).
+- Reducción de la latencia de 800ms a 400ms (50% de ganancia de velocidad).
+- Eliminación total del problema de saturación de conexiones y contención en la base de datos.

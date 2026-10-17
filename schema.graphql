@@ -1,0 +1,24 @@
+"""
+Esquema GraphQL para el Tablero Empresarial de LogiTech SaaS
+Práctica: Optimización de Modelos de Datos con GraphQL y DataLoader
+"""
+
+type Factura {
+  id: ID!
+  monto: Float!
+  clienteId: String
+}
+
+type Cliente {
+  id: ID!
+  nombre: String!
+  sector: String!
+  facturas: [Factura!]!
+}
+
+type Query {
+  """
+  Obtiene el listado completo de clientes junto con sus facturas asociadas
+  """
+  clientes: [Cliente!]!
+}

@@ -1,0 +1,19 @@
+{
+  "name": "graphql",
+  "version": "1.0.0",
+  "description": "Este repositorio contiene el código base para la práctica de la **Unidad 3: Diseño de APIs** en la Maestría de Ingeniería de Software (Materia: *Patrones de Diseño de Software*).",
+  "main": "database.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "type": "module",
+  "dependencies": {
+    "@apollo/server": "^5.5.1",
+    "dataloader": "^2.2.3",
+    "graphql": "^16.14.2"
+  },
+  "author": "",
+  "license": "ISC"
+}
